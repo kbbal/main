@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>5角形レーダーチャート</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="radarChart" width="400" height="400"></canvas>
+
+    <script>
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        const data = {
+            labels: ['A', 'B', 'C', 'D', 'E'],
+            datasets: [{
+                label: 'スコア',
+                data: [20, 40, 60, 80, 100],
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 2
+            }]
+        };
+
+        const config = {
+            type: 'radar',
+            data: data,
+            options: {
+                responsive: true,
+                animation: {
+                    duration: 1500,
+                    easing: 'easeOutQuad'
+                },
+                scales: {
+                    r: {
+                        min: 0,
+                        max: 100,
+                        ticks: {
+                            stepSize: 20
+                        }
+                    }
+                }
+            }
+        };
+
+        const radarChart = new Chart(ctx, config);
+
+        // 3秒ごとにデータをランダム更新
+        setInterval(() => {
+            radarChart.data.datasets[0].data = Array.from({ length: 5 }, () => Math.floor(Math.random() * 100));
+            radarChart.update();
+        }, 3000);
+    </script>
+</body>
+</html>
