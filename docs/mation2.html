@@ -12,25 +12,46 @@
             margin: auto;
             display: block;
         }
+        .controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .controls input {
+            width: 50px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <canvas id="radarChart"></canvas>
+    <div class="controls">
+        <label>A: <input type="number" id="valA" value="0.9" min="0" max="1" step="0.1"></label>
+        <label>B: <input type="number" id="valB" value="0.2" min="0" max="1" step="0.1"></label>
+        <label>C: <input type="number" id="valC" value="0.1" min="0" max="1" step="0.1"></label>
+        <label>D: <input type="number" id="valD" value="0.2" min="0" max="1" step="0.1"></label>
+        <label>E: <input type="number" id="valE" value="0.1" min="0" max="1" step="0.1"></label>
+        <button onclick="updateChart()">更新</button>
+    </div>
     <script>
         const ctx = document.getElementById('radarChart').getContext('2d');
         
-        const initialData = [0.9, 0.2, 0.1, 0.1, 0.1];
-        const targetData = [0.9, 0.2, 0.1, 0.2, 0.1];
-        let frame = 0;
-        const totalFrames = 50;
-
+        function getValues() {
+            return [
+                parseFloat(document.getElementById('valA').value),
+                parseFloat(document.getElementById('valB').value),
+                parseFloat(document.getElementById('valC').value),
+                parseFloat(document.getElementById('valD').value),
+                parseFloat(document.getElementById('valE').value)
+            ];
+        }
+        
         const radarChart = new Chart(ctx, {
             type: 'radar',
             data: {
                 labels: ['A', 'B', 'C', 'D', 'E'],
                 datasets: [{
                     label: 'Data',
-                    data: initialData,
+                    data: getValues(),
                     fill: true,
                     backgroundColor: 'rgba(54, 162, 235, 0.2)',
                     borderColor: 'rgba(54, 162, 235, 1)',
@@ -51,17 +72,10 @@
             }
         });
 
-        function animateRadarChart() {
-            if (frame >= totalFrames) return;
-            frame++;
-            let alpha = frame / totalFrames;
-            let newData = initialData.map((val, i) => val * (1 - alpha) + targetData[i] * alpha);
-            radarChart.data.datasets[0].data = newData;
+        function updateChart() {
+            radarChart.data.datasets[0].data = getValues();
             radarChart.update();
-            requestAnimationFrame(animateRadarChart);
         }
-
-        animateRadarChart();
     </script>
 </body>
 </html>
