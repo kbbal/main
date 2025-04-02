@@ -78,11 +78,16 @@
             let frame = 0;
             const totalFrames = 50;
             
+            // すべての値を 0 にリセット
+            currentValues = [0, 0, 0, 0, 0];
+            radarChart.data.datasets[0].data = currentValues;
+            radarChart.update();
+            
             function step() {
                 if (frame >= totalFrames) return;
                 frame++;
                 let alpha = frame / totalFrames;
-                currentValues = currentValues.map((val, i) => val * (1 - alpha) + targetValues[i] * alpha);
+                currentValues = currentValues.map((_, i) => targetValues[i] * alpha);
                 radarChart.data.datasets[0].data = currentValues;
                 radarChart.update();
                 requestAnimationFrame(step);
