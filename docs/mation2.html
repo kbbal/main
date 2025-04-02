@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>アニメーション付きレーダーチャート</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <canvas id="radarChart"></canvas>
+    <script>
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        
+        const initialData = [0.9, 0.2, 0.1, 0.1, 0.1];
+        const targetData = [0.9, 0.2, 0.1, 0.2, 0.1];
+        let frame = 0;
+        const totalFrames = 50;
+
+        const radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['A', 'B', 'C', 'D', 'E'],
+                datasets: [{
+                    label: 'Data',
+                    data: initialData,
+                    fill: true,
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    pointBackgroundColor: 'rgba(54, 162, 235, 1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    r: {
+                        min: 0,
+                        max: 1,
+                        ticks: { stepSize: 0.2 }
+                    }
+                },
+                animation: false
+            }
+        });
+
+        function animateRadarChart() {
+            if (frame >= totalFrames) return;
+            frame++;
+            let alpha = frame / totalFrames;
+            let newData = initialData.map((val, i) => val * (1 - alpha) + targetData[i] * alpha);
+            radarChart.data.datasets[0].data = newData;
+            radarChart.update();
+            requestAnimationFrame(animateRadarChart);
+        }
+
+        animateRadarChart();
+    </script>
+</body>
+</html>
