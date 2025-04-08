@@ -42,15 +42,15 @@
         <label>C: <input type="number" id="valC" value="0.1" min="0" max="1" step="0.1"></label>
         <label>D: <input type="number" id="valD" value="0.2" min="0" max="1" step="0.1"></label>
         <label>E: <input type="number" id="valE" value="0.1" min="0" max="1" step="0.1"></label>
-        <button onclick="animateChart()">更新</button>
-        <button onclick="saveAsGif()">GIFとして保存</button>
+        <button onclick="animateChart(true)">GIFとして保存</button>
+        <button onclick="animateChart(false)">更新</button>
         <button onclick="saveAsPng()">PNGとして保存</button>
     </div>
     <script>
         const ctx = document.getElementById('radarChart').getContext('2d');
         let currentValues = [0, 0, 0, 0, 0];
         let gif;
-        
+
         function getValues() {
             return [
                 parseFloat(document.getElementById('valA').value),
@@ -70,7 +70,7 @@
                 document.getElementById('nameE').value
             ];
         }
-        
+
         const radarChart = new Chart(ctx, {
             type: 'radar',
             data: {
@@ -98,7 +98,7 @@
             }
         });
 
-        function animateChart() {
+        function animateChart(saveGif) {
             let targetValues = getValues();
             let frame = 0;
             const totalFrames = 50;
@@ -106,34 +106,33 @@
             radarChart.data.datasets[0].data = currentValues;
             radarChart.data.labels = getLabels();
             radarChart.update();
-            
-            gif = new GIF({ workers: 2, quality: 10 });
+
+            if (saveGif) {
+                gif = new GIF({ workers: 2, quality: 10 });
+            }
 
             function step() {
-                if (frame >= totalFrames) return;
+                if (frame >= totalFrames) {
+                    if (saveGif) {
+                        gif.on('finished', function(blob) {
+                            const link = document.createElement('a');
+                            link.href = URL.createObjectURL(blob);
+                            link.download = 'animation.gif';
+                            link.click();
+                        });
+                        gif.render();
+                    }
+                    return;
+                }
                 frame++;
                 let alpha = frame / totalFrames;
                 currentValues = currentValues.map((_, i) => targetValues[i] * alpha);
                 radarChart.data.datasets[0].data = currentValues;
                 radarChart.update();
-                gif.addFrame(ctx.canvas, {copy: true, delay: 50});
+                if (saveGif) gif.addFrame(ctx.canvas, {copy: true, delay: 50});
                 requestAnimationFrame(step);
             }
             step();
-        }
-
-        function saveAsGif() {
-            if (!gif) {
-                alert("まず更新ボタンを押してアニメーションを作成してください。");
-                return;
-            }
-            gif.on('finished', function(blob) {
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = 'animation.gif';
-                link.click();
-            });
-            gif.render();
         }
 
         function saveAsPng() {
