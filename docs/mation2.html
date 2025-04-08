@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>アニメーション付きレーダーチャート</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/gif.js/dist/gif.js"></script>
     <style>
         canvas {
             max-width: 400px;
@@ -37,13 +36,13 @@
         <label><input type="text" id="labelE" value="E"></label>
         <input type="number" id="valE" value="0.1" min="0" max="1" step="0.1">
         <button onclick="updateChart()">更新</button>
-        <button onclick="saveAsGIF()">GIFとして保存</button>
+        <button onclick="recordAnimation()">MP4として保存</button>
     </div>
     <script>
         const ctx = document.getElementById('radarChart').getContext('2d');
-        let frameIndex = 0;
-        let gif;
-
+        let mediaRecorder;
+        let recordedChunks = [];
+        
         function getValues() {
             return [
                 parseFloat(document.getElementById('valA').value),
@@ -88,12 +87,7 @@
                     }
                 },
                 animation: {
-                    duration: 1000,
-                    onProgress: function(animation) {
-                        if (gif) {
-                            gif.addFrame(ctx.canvas, {copy: true, delay: 100});
-                        }
-                    }
+                    duration: 2000
                 }
             }
         });
@@ -108,29 +102,31 @@
             }, 500);
         }
 
-        function saveAsGIF() {
-            gif = new GIF({
-                workers: 2,
-                quality: 10
-            });
+        function recordAnimation() {
+            const stream = document.getElementById('radarChart').captureStream(30);
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+            recordedChunks = [];
 
-            frameIndex = 0;
-            radarChart.options.animation.onComplete = function() {
-                gif.render();
+            mediaRecorder.ondataavailable = event => {
+                if (event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
             };
-
-            radarChart.options.animation.duration = 1000;
-            updateChart();
-
-            gif.on('finished', function(blob) {
+            
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'radar_chart.gif';
+                a.download = 'radar_chart.mp4';
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
-            });
+            };
+
+            mediaRecorder.start();
+            updateChart();
+            setTimeout(() => mediaRecorder.stop(), 2500);
         }
     </script>
 </body>
