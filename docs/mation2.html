@@ -20,11 +20,22 @@
             width: 50px;
             text-align: center;
         }
+        .name-inputs input {
+            width: 80px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <canvas id="radarChart"></canvas>
     <div class="controls">
+        <div class="name-inputs">
+            <label><input type="text" id="nameA" value="A"></label>
+            <label><input type="text" id="nameB" value="B"></label>
+            <label><input type="text" id="nameC" value="C"></label>
+            <label><input type="text" id="nameD" value="D"></label>
+            <label><input type="text" id="nameE" value="E"></label>
+        </div>
         <label>A: <input type="number" id="valA" value="0.9" min="0" max="1" step="0.1"></label>
         <label>B: <input type="number" id="valB" value="0.2" min="0" max="1" step="0.1"></label>
         <label>C: <input type="number" id="valC" value="0.1" min="0" max="1" step="0.1"></label>
@@ -45,11 +56,21 @@
                 parseFloat(document.getElementById('valE').value)
             ];
         }
+
+        function getLabels() {
+            return [
+                document.getElementById('nameA').value,
+                document.getElementById('nameB').value,
+                document.getElementById('nameC').value,
+                document.getElementById('nameD').value,
+                document.getElementById('nameE').value
+            ];
+        }
         
         const radarChart = new Chart(ctx, {
             type: 'radar',
             data: {
-                labels: ['A', 'B', 'C', 'D', 'E'],
+                labels: getLabels(),
                 datasets: [{
                     label: 'Data',
                     data: currentValues,
@@ -81,6 +102,7 @@
             // すべての値を 0 にリセット
             currentValues = [0, 0, 0, 0, 0];
             radarChart.data.datasets[0].data = currentValues;
+            radarChart.data.labels = getLabels(); // ラベルを更新
             radarChart.update();
             
             function step() {
