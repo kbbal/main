@@ -21,34 +21,27 @@
             width: 50px;
             text-align: center;
         }
-        .name-inputs input {
-            width: 80px;
-            text-align: center;
-        }
     </style>
 </head>
 <body>
     <canvas id="radarChart"></canvas>
     <div class="controls">
-        <div class="name-inputs">
-            <label><input type="text" id="nameA" value="A"></label>
-            <label><input type="text" id="nameB" value="B"></label>
-            <label><input type="text" id="nameC" value="C"></label>
-            <label><input type="text" id="nameD" value="D"></label>
-            <label><input type="text" id="nameE" value="E"></label>
-        </div>
-        <label>A: <input type="number" id="valA" value="0.9" min="0" max="1" step="0.1"></label>
-        <label>B: <input type="number" id="valB" value="0.2" min="0" max="1" step="0.1"></label>
-        <label>C: <input type="number" id="valC" value="0.1" min="0" max="1" step="0.1"></label>
-        <label>D: <input type="number" id="valD" value="0.2" min="0" max="1" step="0.1"></label>
-        <label>E: <input type="number" id="valE" value="0.1" min="0" max="1" step="0.1"></label>
-        <button onclick="animateChart(true)">GIFとして保存</button>
-        <button onclick="animateChart(false)">更新</button>
-        <button onclick="saveAsPng()">PNGとして保存</button>
+        <label><input type="text" id="labelA" value="A"></label>
+        <input type="number" id="valA" value="0.9" min="0" max="1" step="0.1">
+        <label><input type="text" id="labelB" value="B"></label>
+        <input type="number" id="valB" value="0.2" min="0" max="1" step="0.1">
+        <label><input type="text" id="labelC" value="C"></label>
+        <input type="number" id="valC" value="0.1" min="0" max="1" step="0.1">
+        <label><input type="text" id="labelD" value="D"></label>
+        <input type="number" id="valD" value="0.2" min="0" max="1" step="0.1">
+        <label><input type="text" id="labelE" value="E"></label>
+        <input type="number" id="valE" value="0.1" min="0" max="1" step="0.1">
+        <button onclick="updateChart()">更新</button>
+        <button onclick="saveAsGIF()">GIFとして保存</button>
     </div>
     <script>
         const ctx = document.getElementById('radarChart').getContext('2d');
-        let currentValues = [0, 0, 0, 0, 0];
+        let frameIndex = 0;
         let gif;
 
         function getValues() {
@@ -60,14 +53,14 @@
                 parseFloat(document.getElementById('valE').value)
             ];
         }
-
+        
         function getLabels() {
             return [
-                document.getElementById('nameA').value,
-                document.getElementById('nameB').value,
-                document.getElementById('nameC').value,
-                document.getElementById('nameD').value,
-                document.getElementById('nameE').value
+                document.getElementById('labelA').value,
+                document.getElementById('labelB').value,
+                document.getElementById('labelC').value,
+                document.getElementById('labelD').value,
+                document.getElementById('labelE').value
             ];
         }
 
@@ -77,7 +70,7 @@
                 labels: getLabels(),
                 datasets: [{
                     label: 'Data',
-                    data: currentValues,
+                    data: getValues(),
                     fill: true,
                     backgroundColor: 'rgba(54, 162, 235, 0.2)',
                     borderColor: 'rgba(54, 162, 235, 1)',
@@ -94,52 +87,50 @@
                         ticks: { stepSize: 0.2 }
                     }
                 },
-                animation: false
+                animation: {
+                    duration: 1000,
+                    onProgress: function(animation) {
+                        if (gif) {
+                            gif.addFrame(ctx.canvas, {copy: true, delay: 100});
+                        }
+                    }
+                }
             }
         });
 
-        function animateChart(saveGif) {
-            let targetValues = getValues();
-            let frame = 0;
-            const totalFrames = 50;
-            currentValues = [0, 0, 0, 0, 0];
-            radarChart.data.datasets[0].data = currentValues;
-            radarChart.data.labels = getLabels();
+        function updateChart() {
+            radarChart.data.datasets[0].data = [0, 0, 0, 0, 0];
             radarChart.update();
-
-            if (saveGif) {
-                gif = new GIF({ workers: 2, quality: 10 });
-            }
-
-            function step() {
-                if (frame >= totalFrames) {
-                    if (saveGif) {
-                        gif.on('finished', function(blob) {
-                            const link = document.createElement('a');
-                            link.href = URL.createObjectURL(blob);
-                            link.download = 'animation.gif';
-                            link.click();
-                        });
-                        gif.render();
-                    }
-                    return;
-                }
-                frame++;
-                let alpha = frame / totalFrames;
-                currentValues = currentValues.map((_, i) => targetValues[i] * alpha);
-                radarChart.data.datasets[0].data = currentValues;
+            setTimeout(() => {
+                radarChart.data.datasets[0].data = getValues();
+                radarChart.data.labels = getLabels();
                 radarChart.update();
-                if (saveGif) gif.addFrame(ctx.canvas, {copy: true, delay: 50});
-                requestAnimationFrame(step);
-            }
-            step();
+            }, 500);
         }
 
-        function saveAsPng() {
-            const link = document.createElement('a');
-            link.href = ctx.canvas.toDataURL('image/png');
-            link.download = 'chart.png';
-            link.click();
+        function saveAsGIF() {
+            gif = new GIF({
+                workers: 2,
+                quality: 10
+            });
+
+            frameIndex = 0;
+            radarChart.options.animation.onComplete = function() {
+                gif.render();
+            };
+
+            radarChart.options.animation.duration = 1000;
+            updateChart();
+
+            gif.on('finished', function(blob) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'radar_chart.gif';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            });
         }
     </script>
 </body>
