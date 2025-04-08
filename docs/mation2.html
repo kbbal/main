@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>アニメーション付きレーダーチャート</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gif.js/dist/gif.js"></script>
     <style>
         canvas {
             max-width: 400px;
@@ -42,6 +43,8 @@
         <label>D: <input type="number" id="valD" value="0.2" min="0" max="1" step="0.1"></label>
         <label>E: <input type="number" id="valE" value="0.1" min="0" max="1" step="0.1"></label>
         <button onclick="animateChart()">更新</button>
+        <button onclick="saveAsPNG()">PNGとして保存</button>
+        <button onclick="saveAsGIF()">GIFとして保存</button>
     </div>
     <script>
         const ctx = document.getElementById('radarChart').getContext('2d');
@@ -99,10 +102,9 @@
             let frame = 0;
             const totalFrames = 50;
             
-            // すべての値を 0 にリセット
             currentValues = [0, 0, 0, 0, 0];
             radarChart.data.datasets[0].data = currentValues;
-            radarChart.data.labels = getLabels(); // ラベルを更新
+            radarChart.data.labels = getLabels(); 
             radarChart.update();
             
             function step() {
@@ -116,7 +118,44 @@
             }
             step();
         }
+
+        function saveAsPNG() {
+            let link = document.createElement('a');
+            link.download = 'radar_chart.png';
+            link.href = document.getElementById('radarChart').toDataURL("image/png");
+            link.click();
+        }
+
+        function saveAsGIF() {
+            let gif = new GIF({ workers: 2, quality: 10 });
+            let frame = 0;
+            const totalFrames = 50;
+            let targetValues = getValues();
+            let tempValues = [0, 0, 0, 0, 0];
+            
+            function addFrame() {
+                if (frame >= totalFrames) {
+                    gif.render();
+                    return;
+                }
+                frame++;
+                let alpha = frame / totalFrames;
+                tempValues = tempValues.map((_, i) => targetValues[i] * alpha);
+                radarChart.data.datasets[0].data = tempValues;
+                radarChart.update();
+                
+                gif.addFrame(ctx.canvas, {copy: true, delay: 50});
+                requestAnimationFrame(addFrame);
+            }
+            addFrame();
+            
+            gif.on('finished', function(blob) {
+                let link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'radar_chart.gif';
+                link.click();
+            });
+        }
     </script>
 </body>
 </html>
-
