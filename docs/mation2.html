@@ -49,7 +49,7 @@
     <script>
         const ctx = document.getElementById('radarChart').getContext('2d');
         let currentValues = [0, 0, 0, 0, 0];
-        let gif = new GIF({ workers: 2, quality: 10 });
+        let gif;
         
         function getValues() {
             return [
@@ -102,13 +102,13 @@
             let targetValues = getValues();
             let frame = 0;
             const totalFrames = 50;
-            
-            // すべての値を 0 にリセット
             currentValues = [0, 0, 0, 0, 0];
             radarChart.data.datasets[0].data = currentValues;
-            radarChart.data.labels = getLabels(); // ラベルを更新
+            radarChart.data.labels = getLabels();
             radarChart.update();
             
+            gif = new GIF({ workers: 2, quality: 10 });
+
             function step() {
                 if (frame >= totalFrames) return;
                 frame++;
@@ -119,11 +119,14 @@
                 gif.addFrame(ctx.canvas, {copy: true, delay: 50});
                 requestAnimationFrame(step);
             }
-            gif = new GIF({ workers: 2, quality: 10 }); // Reset GIF
             step();
         }
 
         function saveAsGif() {
+            if (!gif) {
+                alert("まず更新ボタンを押してアニメーションを作成してください。");
+                return;
+            }
             gif.on('finished', function(blob) {
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
@@ -142,7 +145,3 @@
     </script>
 </body>
 </html>
-
-</body>
-</html>
-
