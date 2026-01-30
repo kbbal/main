@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Pref Elimination Ranking (food_court / museum / cinema)</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Turf.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+  <style>
+    body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; }
+    #map { height: 100vh; width: 100vw; }
+
+    /* LEFT: Ranking (2 columns, compact, no scroll) */
+    .panel-left{
+      position: fixed; top: 12px; left: 12px; z-index: 9999;
+      width: 300px; height: calc(100vh - 24px);
+      overflow: hidden;
+      background: rgba(255,255,255,0.94);
+      border: 1px solid #bbb; border-radius: 10px;
+      padding: 6px 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+      font-size: 10px;
+      box-sizing: border-box;
+    }
+
+    /* RIGHT: Controls */
+    .panel-right{
+      position: fixed; top: 12px; right: 12px; z-index: 9999;
+      width: 390px; max-height: calc(100vh - 24px);
+      overflow: auto;
+      background: rgba(255,255,255,0.94);
+      border: 1px solid #bbb; border-radius: 10px;
+      padding: 10px 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+      font-size: 12px;
+      box-sizing: border-box;
+    }
+
+    .row { display:flex; gap:6px; align-items:center; margin-top:6px; }
+    .grow { flex: 1 1 auto; }
+
+    .badge{
+      padding:2px 6px;
+      border:1px solid #ccc;
+      border-radius:999px;
+      background:#fafafa;
+      white-space: nowrap;
+      font-size: 11px;
+    }
+
+    input[type="number"], select{
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid #bbb;
+      box-sizing: border-box;
+      background: #fff;
+    }
+
+    button{
+      padding: 6px 10px;
+      border-radius: 8px;
+      border:1px solid #bbb;
+      background:#fff;
+      cursor:pointer;
+    }
+    button:disabled{ opacity: 0.6; cursor: not-allowed; }
+
+    .muted { color:#666; }
+    .tiny { font-size: 10px; }
+    .hr { margin:8px 0; border-top:1px solid #ddd; }
+
+    .field{
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 8px;
+      background: rgba(250,250,250,0.85);
+      margin-top: 10px;
+    }
+
+    /* Ranking grid */
+    .rank-grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3px 5px;
+      margin-top: 4px;
+      height: calc(100% - 44px);
+      overflow: hidden;
+    }
+
+    .rank-cell{
+      display:flex;
+      align-items:center;
+      gap:4px;
+      border:1px solid #e5e5e5;
+      border-radius:6px;
+      padding:2px 4px;
+      background:#fff;
+      min-height:20px;
+      box-sizing:border-box;
+      overflow:hidden;
+      line-height:1.05;
+    }
+    .rank-num{
+      font-weight:900;
+      width:34px;
+      flex:0 0 auto;
+      white-space:nowrap;
+    }
+    .rank-name{
+      font-weight:700;
+      flex:1 1 auto;
+      overflow:hidden;
+      white-space:nowrap;
+      text-overflow:ellipsis;
+    }
+    .pending{ color:#aaa; }
+    .decided{ border-color:#cfcfcf; }
+  </style>
+</head>
+
+<body>
+<div id="map"></div>
+
+<!-- LEFT: Ranking -->
+<div class="panel-left">
+  <div style="font-size:12px; font-weight:900;">消滅順（1位が上）</div>
+  <div class="tiny muted" style="margin-top:2px;">47県を縦2列で表示</div>
+  <div class="hr"></div>
+  <div id="rankGrid" class="rank-grid"></div>
+</div>
+
+<!-- RIGHT: Controls -->
+<div class="panel-right">
+  <div style="font-size:14px; font-weight:900;">操作</div>
+  <div class="muted" style="margin-top:4px;">
+    「データ」を選んで <b>Load</b>。その後 <b>Start</b> でランキング処理を開始します。
+  </div>
+
+  <div class="hr"></div>
+
+  <!-- Dataset selector -->
+  <div class="row">
+    <span class="badge">データ</span>
+    <select id="dataset" class="grow">
+      <option value="points_food_court.geojson">food_court (414)</option>
+      <option value="points_museum.geojson">museum (6674)</option>
+      <option value="points_cinema.geojson">cinema (503)</option>
+      <option value="points_all.geojson">all (7591)</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <button id="load" class="grow">Load（選択データを読み込み）</button>
+    <button id="clear">Clear</button>
+  </div>
+
+  <div class="field tiny muted">
+    読み込み状態: <b id="loadedState">未</b><br/>
+    読み込み点数: <b id="nPoints">-</b><br/>
+    prefs正規化: <b id="prefsState">-</b>
+  </div>
+
+  <div class="hr"></div>
+
+  <!-- Parameters -->
+  <div class="row">
+    <span class="badge">初期 eps</span>
+    <input id="epsInit" class="grow" type="number" value="80" step="0.1" min="0.1" max="200"/>
+  </div>
+  <div class="row">
+    <span class="badge">minPts</span>
+    <input id="minPts" class="grow" type="number" value="5" min="2" max="50" step="1"/>
+  </div>
+  <div class="row">
+    <span class="badge">間隔(ms)</span>
+    <input id="intervalMs" class="grow" type="number" value="600" min="20" max="5000" step="20"/>
+  </div>
+
+  <div class="field tiny muted">
+    eps の下げ方（自動）:<br/>
+    80→1：1刻み / 1→0.1：0.1刻み / 0.1→0.01：0.01刻み
+  </div>
+
+  <div class="row">
+    <button id="start" class="grow" disabled>Start</button>
+    <button id="stop" disabled>Stop</button>
+    <button id="reset" disabled>Reset</button>
+  </div>
+
+  <div class="field tiny muted">
+    現在 eps: <b id="epsNow">-</b><br/>
+    残り県数: <b id="remainCount">47</b><br/>
+    クラスタ数: <b id="nClusters">-</b>
+  </div>
+</div>
+
+<script>
+let map, prefsFC;
+let pointsFC = null;
+let clusterLayer, pinLayer;
+let timer = null;
+
+/* ===== 47都道府県 ===== */
+const PREFS_47 = [
+  "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
+  "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
+  "新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県",
+  "三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県",
+  "鳥取県","島根県","岡山県","広島県","山口県",
+  "徳島県","香川県","愛媛県","高知県",
+  "福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"
+];
+
+/* ===== 県名正規化（prefs.geojsonのカラム揺れ対策） ===== */
+const PREF_NAME_MAP = (() => {
+  const m = new Map();
+  const reg = (keys, val) => keys.forEach(k => m.set(String(k).toLowerCase(), val));
+
+  PREFS_47.forEach(jp => {
+    const base = jp.replace(/(都|道|府|県)$/,"");
+    reg([jp, base], jp);
+  });
+
+  // 英字（最低限）
+  reg(["hokkaido"], "北海道");
+  reg(["aomori"], "青森県");
+  reg(["iwate"], "岩手県");
+  reg(["miyagi"], "宮城県");
+  reg(["akita"], "秋田県");
+  reg(["yamagata"], "山形県");
+  reg(["fukushima"], "福島県");
+  reg(["ibaraki"], "茨城県");
+  reg(["tochigi"], "栃木県");
+  reg(["gunma"], "群馬県");
+  reg(["saitama"], "埼玉県");
+  reg(["chiba"], "千葉県");
+  reg(["tokyo","tōkyō","toukyou"], "東京都");
+  reg(["kanagawa"], "神奈川県");
+  reg(["niigata"], "新潟県");
+  reg(["toyama"], "富山県");
+  reg(["ishikawa"], "石川県");
+  reg(["fukui"], "福井県");
+  reg(["yamanashi"], "山梨県");
+  reg(["nagano"], "長野県");
+  reg(["gifu"], "岐阜県");
+  reg(["shizuoka"], "静岡県");
+  reg(["aichi"], "愛知県");
+  reg(["mie"], "三重県");
+  reg(["shiga"], "滋賀県");
+  reg(["kyoto"], "京都府");
+  reg(["osaka","ōsaka"], "大阪府");
+  reg(["hyogo","hyōgo"], "兵庫県");
+  reg(["nara"], "奈良県");
+  reg(["wakayama"], "和歌山県");
+  reg(["tottori"], "鳥取県");
+  reg(["shimane"], "島根県");
+  reg(["okayama"], "岡山県");
+  reg(["hiroshima"], "広島県");
+  reg(["yamaguchi"], "山口県");
+  reg(["tokushima"], "徳島県");
+  reg(["kagawa"], "香川県");
+  reg(["ehime"], "愛媛県");
+  reg(["kochi","kōchi"], "高知県");
+  reg(["fukuoka"], "福岡県");
+  reg(["saga"], "佐賀県");
+  reg(["nagasaki"], "長崎県");
+  reg(["kumamoto"], "熊本県");
+  reg(["oita","ōita"], "大分県");
+  reg(["miyazaki"], "宮崎県");
+  reg(["kagoshima"], "鹿児島県");
+  reg(["okinawa"], "沖縄県");
+
+  return m;
+})();
+
+function normalizeToKanjiPref(props){
+  if(!props) return null;
+
+  const candidates = ["pref_name","prefecture","name_ja","name","N03_004","NAME","NAM","kanji","ken"];
+  let raw = null;
+
+  for(const k of candidates){
+    const v = props[k];
+    if(typeof v === "string" && v.trim()){
+      raw = v.trim();
+      break;
+    }
+  }
+  if(!raw){
+    for(const v of Object.values(props)){
+      if(typeof v === "string" && v.trim()){
+        raw = v.trim();
+        break;
+      }
+    }
+  }
+  if(!raw) return null;
+
+  const key = raw.toLowerCase()
+    .replace(/[\s\-_]/g,"")
+    .replace(/(prefecture|ken|to|do|fu)$/,"");
+
+  if(PREF_NAME_MAP.has(key)) return PREF_NAME_MAP.get(key);
+
+  const raw2 = raw.replace(/(都|道|府|県)$/,"");
+  const key2 = raw2.toLowerCase().replace(/[\s\-_]/g,"");
+  if(PREF_NAME_MAP.has(key2)) return PREF_NAME_MAP.get(key2);
+
+  return null;
+}
+
+/* ===== 状態 ===== */
+let eliminated = new Map(); // pref -> {rank, eps, lastArea}
+let lastTotals = new Map();
+let lastActive = new Set();
+let epsCurrent = null;
+
+async function loadGeoJSON(url){
+  const res = await fetch(url);
+  if(!res.ok) throw new Error("failed " + url);
+  return await res.json();
+}
+
+function initMap(){
+  map = L.map("map").setView([36.0, 138.0], 5);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
+  }).addTo(map);
+
+  clusterLayer = L.geoJSON(null, { style: {weight:1, fillOpacity:0.25} }).addTo(map);
+  pinLayer = L.layerGroup().addTo(map);
+}
+
+function clearMapLayers(){
+  clusterLayer.clearLayers();
+  pinLayer.clearLayers();
+}
+
+function renderRankGrid(){
+  const rankTo = new Map();
+  for(const [pref, info] of eliminated.entries()){
+    rankTo.set(info.rank, pref);
+  }
+
+  const frag = document.createDocumentFragment();
+  for(let rank=1; rank<=47; rank++){
+    const div = document.createElement("div");
+    div.className = "rank-cell";
+    const pref = rankTo.get(rank);
+
+    if(pref){
+      div.classList.add("decided");
+      div.innerHTML = `<div class="rank-num">${rank}位</div><div class="rank-name">${pref}</div>`;
+    }else{
+      div.innerHTML = `<div class="rank-num">${rank}位</div><div class="rank-name pending">—</div>`;
+    }
+    frag.appendChild(div);
+  }
+
+  const grid = document.getElementById("rankGrid");
+  grid.innerHTML = "";
+  grid.appendChild(frag);
+}
+
+function setStatusUI({eps, remainCount, nClusters}){
+  document.getElementById("epsNow").textContent =
+    (eps == null) ? "-" : (typeof eps === "number" ? eps.toFixed(2) : String(eps));
+  document.getElementById("remainCount").textContent = String(remainCount);
+  document.getElementById("nClusters").textContent = String(nClusters);
+}
+
+function setLoadedUI(isLoaded, nPoints){
+  document.getElementById("loadedState").textContent = isLoaded ? "済" : "未";
+  document.getElementById("nPoints").textContent = (nPoints == null) ? "-" : String(nPoints);
+  document.getElementById("start").disabled = !isLoaded;
+  document.getElementById("reset").disabled = !isLoaded;
+  document.getElementById("stop").disabled = true;
+}
+
+function stopAnimation(){
+  if(timer){
+    clearInterval(timer);
+    timer = null;
+  }
+  document.getElementById("start").disabled = (pointsFC == null);
+  document.getElementById("stop").disabled = true;
+}
+
+function resetRankingUIOnly(){
+  eliminated = new Map();
+  lastTotals = new Map();
+  lastActive = new Set();
+  epsCurrent = null;
+  setStatusUI({eps: "-", remainCount: 47, nClusters: "-"});
+  renderRankGrid();
+  clearMapLayers();
+}
+
+/* ===== DBSCAN + hull ===== */
+function convexHull(features){
+  return turf.convex(turf.featureCollection(features));
+}
+
+function computeClusterPolys(points, epsKm, minPts){
+  const clustered = turf.clustersDbscan(points, epsKm, {
+    minPoints: minPts,
+    units: "kilometers"
+  });
+
+  const byCluster = new Map();
+  clustered.features.forEach(f => {
+    const cid = f.properties.cluster;
+    if(cid == null) return; // noiseは描画しない
+    if(!byCluster.has(cid)) byCluster.set(cid, []);
+    byCluster.get(cid).push(f);
+  });
+
+  const clusterPolys = [];
+  byCluster.forEach((feats, cid) => {
+    if(feats.length < 3) return;
+    const hull = convexHull(feats);
+    if(!hull) return;
+    hull.properties = { cluster_id: cid, count: feats.length };
+    clusterPolys.push(hull);
+  });
+
+  return clusterPolys;
+}
+
+/* ===== 県別面積 ===== */
+function prefTotalsFromClusters(clusterPolys){
+  const totals = new Map();
+  PREFS_47.forEach(p => totals.set(p, 0));
+
+  for(const poly of clusterPolys){
+    for(const pref of prefsFC.features){
+      const prefName = pref.properties.pref_name_kanji;
+      if(!prefName) continue;
+
+      const inter = turf.intersect(poly, pref);
+      if(!inter) continue;
+
+      const areaKm2 = turf.area(inter) / 1e6;
+      if(areaKm2 <= 0) continue;
+
+      if(!totals.has(prefName)) continue;
+      totals.set(prefName, (totals.get(prefName) || 0) + areaKm2);
+    }
+  }
+  return totals;
+}
+
+function activeSetFromTotals(totals){
+  const active = new Set();
+  for(const [pref, area] of totals.entries()){
+    if(area > 0) active.add(pref);
+  }
+  return active;
+}
+
+/* ===== eps stepping: 80→1 step1, 1→0.1 step0.1, 0.1→0.01 step0.01 ===== */
+function nextEps(eps){
+  if (eps > 1.0) return Math.max(eps - 1.0, 1.0);
+  if (eps > 0.1) return Math.max(eps - 0.1, 0.1);
+  if (eps > 0.01) return Math.max(eps - 0.01, 0.01);
+  return 0;
+}
+
+function stepOnce(){
+  const minPts = Math.max(2, Number(document.getElementById("minPts").value || 5));
+  const clusterPolys = computeClusterPolys(pointsFC, epsCurrent, minPts);
+
+  // draw (polygon + pins)
+  clearMapLayers();
+  clusterLayer.addData(turf.featureCollection(clusterPolys));
+  for(const poly of clusterPolys){
+    const c = turf.centerOfMass(poly).geometry.coordinates;
+    L.marker([c[1], c[0]]).addTo(pinLayer);
+  }
+
+  const totals = prefTotalsFromClusters(clusterPolys);
+  const active = activeSetFromTotals(totals);
+
+  // vanished (was active -> now inactive)
+  const vanished = [];
+  for(const pref of PREFS_47){
+    if(eliminated.has(pref)) continue;
+    const wasActive = lastActive.has(pref);
+    const isActive = active.has(pref);
+    if(wasActive && !isActive){
+      const lastArea = lastTotals.get(pref) ?? 0;
+      vanished.push({pref, lastArea});
+    }
+  }
+
+  vanished.sort((a,b) => a.lastArea - b.lastArea || a.pref.localeCompare(b.pref));
+
+  let remainingBefore = 47 - eliminated.size;
+  for(const v of vanished){
+    const rank = remainingBefore;
+    eliminated.set(v.pref, {rank, eps: epsCurrent, lastArea: v.lastArea});
+    remainingBefore -= 1;
+  }
+
+  lastTotals = totals;
+  lastActive = active;
+
+  const remainCount = 47 - eliminated.size;
+  setStatusUI({eps: epsCurrent, remainCount, nClusters: clusterPolys.length});
+  renderRankGrid();
+
+  // decide last
+  if(remainCount === 1){
+    const lastPref = PREFS_47.find(p => !eliminated.has(p));
+    if(lastPref){
+      const lastArea = totals.get(lastPref) ?? 0;
+      eliminated.set(lastPref, {rank: 1, eps: epsCurrent, lastArea});
+    }
+    setStatusUI({eps: epsCurrent, remainCount: 0, nClusters: clusterPolys.length});
+    renderRankGrid();
+    stopAnimation();
+    return true;
+  }
+
+  // ★ eps最小(=0)になったら、残りは「県内クラスタ面積（合計）」の大きい順で順位確定
+  if(epsCurrent <= 0){
+    const remaining = PREFS_47.filter(p => !eliminated.has(p));
+
+    const remWithArea = remaining.map(p => ({
+      pref: p,
+      area: (totals.get(p) ?? 0)
+    }));
+
+    // 面積の大きい順（同点は県名）
+    remWithArea.sort((a,b) => {
+      if(b.area !== a.area) return b.area - a.area;
+      return a.pref.localeCompare(b.pref);
+    });
+
+    // すでに使われたrankを除外して、空いている上位rank（小さい数字）から埋める
+    const used = new Set(Array.from(eliminated.values()).map(x => x.rank));
+    const openRanks = [];
+    for(let r=1; r<=47; r++){
+      if(!used.has(r)) openRanks.push(r);
+    }
+    openRanks.sort((a,b)=> a-b);
+
+    for(let i=0; i<remWithArea.length; i++){
+      const pref = remWithArea[i].pref;
+      const rank = openRanks[i]; // 1位側から割り当て
+      eliminated.set(pref, {rank, eps: 0, lastArea: remWithArea[i].area});
+    }
+
+    setStatusUI({eps: 0, remainCount: 0, nClusters: clusterPolys.length});
+    renderRankGrid();
+    stopAnimation();
+    return true;
+  }
+
+  return false;
+}
+
+function startAnimation(){
+  if(!pointsFC){
+    alert("先に Load でデータを読み込んでください。");
+    return;
+  }
+
+  stopAnimation();
+  document.getElementById("start").disabled = true;
+  document.getElementById("stop").disabled = false;
+
+  const epsInit = Math.max(0.1, Number(document.getElementById("epsInit").value || 80));
+  const intervalMs = Math.max(20, Number(document.getElementById("intervalMs").value || 600));
+  const minPts = Math.max(2, Number(document.getElementById("minPts").value || 5));
+
+  eliminated = new Map();
+  lastTotals = new Map();
+  lastActive = new Set();
+  epsCurrent = epsInit;
+
+  // baseline at epsInit
+  const initPolys = computeClusterPolys(pointsFC, epsCurrent, minPts);
+  clearMapLayers();
+  clusterLayer.addData(turf.featureCollection(initPolys));
+  for(const poly of initPolys){
+    const c = turf.centerOfMass(poly).geometry.coordinates;
+    L.marker([c[1], c[0]]).addTo(pinLayer);
+  }
+
+  const initTotals = prefTotalsFromClusters(initPolys);
+  lastTotals = initTotals;
+  lastActive = activeSetFromTotals(initTotals);
+
+  // 初期時点で area==0 の県は「下位」から確定（1位にならない）
+  const initInactive = [];
+  for(const pref of PREFS_47){
+    const area0 = initTotals.get(pref) ?? 0;
+    if(area0 <= 0) initInactive.push({pref, area: area0});
+  }
+  initInactive.sort((a,b) => (a.area - b.area) || a.pref.localeCompare(b.pref));
+
+  let remainingBefore = 47 - eliminated.size;
+  for(const v of initInactive){
+    const rank = remainingBefore;
+    eliminated.set(v.pref, {rank, eps: epsCurrent, lastArea: v.area});
+    remainingBefore -= 1;
+  }
+
+  const remainCount0 = 47 - eliminated.size;
+  setStatusUI({eps: epsCurrent, remainCount: remainCount0, nClusters: initPolys.length});
+  renderRankGrid();
+
+  timer = setInterval(() => {
+    epsCurrent = nextEps(epsCurrent);
+    const done = stepOnce();
+    if(done) return;
+  }, intervalMs);
+}
+
+/* ===== Dataset load ===== */
+async function loadSelectedDataset(){
+  stopAnimation();
+  resetRankingUIOnly();
+
+  const file = document.getElementById("dataset").value;
+  const path = "./" + file; // index.html が public/ にある想定
+
+  document.getElementById("loadedState").textContent = "読込中…";
+  document.getElementById("nPoints").textContent = "-";
+  document.getElementById("start").disabled = true;
+  document.getElementById("stop").disabled = true;
+  document.getElementById("reset").disabled = true;
+
+  try{
+    const fc = await loadGeoJSON(path);
+    pointsFC = fc;
+    setLoadedUI(true, pointsFC.features.length);
+    resetRankingUIOnly();
+  }catch(e){
+    console.error(e);
+    pointsFC = null;
+    setLoadedUI(false, null);
+    alert("データ読み込みに失敗しました: " + path + "\nConsole も確認してください。");
+  }
+}
+
+function clearDataset(){
+  stopAnimation();
+  pointsFC = null;
+  setLoadedUI(false, null);
+  resetRankingUIOnly();
+}
+
+(async function main(){
+  initMap();
+
+  // prefs を読み込み、47都道府県（漢字）に正規化して pref_name_kanji を付与
+  prefsFC = await loadGeoJSON("./prefs.geojson");
+  let ok = 0, ng = 0;
+  prefsFC.features.forEach(f => {
+    f.properties = f.properties || {};
+    const kanji = normalizeToKanjiPref(f.properties);
+    f.properties.pref_name_kanji = kanji;
+    if(kanji) ok++; else ng++;
+  });
+  document.getElementById("prefsState").textContent = `OK:${ok} / NG:${ng}`;
+
+  renderRankGrid();
+  setLoadedUI(false, null);
+  setStatusUI({eps:"-", remainCount:47, nClusters:"-"});
+
+  document.getElementById("load").addEventListener("click", loadSelectedDataset);
+  document.getElementById("clear").addEventListener("click", clearDataset);
+
+  document.getElementById("start").addEventListener("click", startAnimation);
+  document.getElementById("stop").addEventListener("click", stopAnimation);
+  document.getElementById("reset").addEventListener("click", () => {
+    stopAnimation();
+    resetRankingUIOnly();
+  });
+})();
+</script>
+</body>
+</html>
